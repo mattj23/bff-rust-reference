@@ -4,6 +4,8 @@ use faer::sparse::{SparseColMat, Triplet};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
+type SparseMat = SparseColMat<u32, f64>;
+
 fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
     Ok(mesh
         .single_boundary_vertices()?
@@ -112,7 +114,7 @@ fn slice_triplets_to_sparse(
     rows: &[u32],
     cols: &[u32],
     triplets: &[Triplet<u32, u32, f64>],
-) -> Result<SparseColMat<u32, f64>> {
+) -> Result<SparseMat> {
     let row_check: HashMap<u32, u32> = rows
         .iter()
         .enumerate()
@@ -138,21 +140,69 @@ fn slice_triplets_to_sparse(
     SparseColMat::try_new_from_triplets(rows.len(), cols.len(), &updated).map_err(|e| e.into())
 }
 
+pub fn laplacian_set(mesh: &MeshStructure) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
+    let triplets = cotan_laplacian_triplets(&mesh)?;
+    let inner = mesh.inner_vertices()?;
+    let boundary = mesh.single_boundary_vertices()?;
+
+    // The complete cotangent laplacian matrix A
+    let a =
+        SparseColMat::try_new_from_triplets(mesh.vertices.len(), mesh.vertices.len(), &triplets)?;
+    let aii = slice_triplets_to_sparse(&inner, &inner, &triplets)?;
+    let aib = slice_triplets_to_sparse(&inner, &boundary, &triplets)?;
+    let abb = slice_triplets_to_sparse(&boundary, &boundary, &triplets)?;
+
+    Ok((a, aii, aib, abb))
+}
+
+pub fn dirichlet_boundary(mesh: &MeshStructure) -> Result<Vec<f64>> {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::*;
     use approx::assert_relative_eq;
+    use faer::linalg::solvers::Solve;
+    use faer::Mat;
+    use std::ops::Mul;
+
+    #[test]
+    fn dirichlet_ui() {
+        let mesh = get_test_structure();
+        let (a, aii, aib, abb) = laplacian_set(&mesh).unwrap();
+
+        let all_defects = angle_defects(&mesh).unwrap();
+        let inner_defects = mesh
+            .inner_vertices()
+            .unwrap()
+            .iter()
+            .map(|i| all_defects[*i as usize])
+            .collect::<Vec<_>>();
+
+        let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
+
+        let ub = Mat::<f64>::zeros(mesh.single_boundary_vertices().unwrap().len(), 1);
+        let value = &defects + &aib.mul(&ub);
+
+        let aii_lu = aii.sp_lu().unwrap();
+        let ui = -aii_lu.solve(&value);
+        let check: Vec<f64> = ui.row_iter().map(|r| r[0]).collect();
+
+        let expected = get_float_vector("dirichlet_ui.floatvec");
+
+        assert_eq!(check.len(), expected.len());
+        for (test, known) in check.iter().zip(expected.iter()) {
+            assert_relative_eq!(test, known, epsilon = 1e-6);
+        }
+    }
 
     #[test]
     fn laplacian_abb() {
         let structure = get_test_structure();
-        let boundary = structure.single_boundary_vertices().unwrap();
-
-        let temp = cotan_laplacian_triplets(&structure).unwrap();
-        let abb = slice_triplets_to_sparse(&boundary, &boundary, &temp).unwrap();
+        let (_, _, _, abb) = laplacian_set(&structure).unwrap();
         let triplets = sparse_as_triplets(&abb);
-
         let expected = get_sparse_triplets("abb.coo");
 
         assert_triplets_eq!(triplets, expected);
@@ -161,13 +211,8 @@ mod tests {
     #[test]
     fn laplacian_aib() {
         let structure = get_test_structure();
-        let inner = structure.inner_vertices().unwrap();
-        let boundary = structure.single_boundary_vertices().unwrap();
-
-        let temp = cotan_laplacian_triplets(&structure).unwrap();
-        let aib = slice_triplets_to_sparse(&inner, &boundary, &temp).unwrap();
+        let (_, _, aib, _) = laplacian_set(&structure).unwrap();
         let triplets = sparse_as_triplets(&aib);
-
         let expected = get_sparse_triplets("aib.coo");
 
         assert_triplets_eq!(triplets, expected);
@@ -176,12 +221,8 @@ mod tests {
     #[test]
     fn laplacian_aii() {
         let structure = get_test_structure();
-        let inner = structure.inner_vertices().unwrap();
-
-        let temp = cotan_laplacian_triplets(&structure).unwrap();
-        let aii = slice_triplets_to_sparse(&inner, &inner, &temp).unwrap();
+        let (_, aii, _, _) = laplacian_set(&structure).unwrap();
         let triplets = sparse_as_triplets(&aii);
-
         let expected = get_sparse_triplets("aii.coo");
 
         assert_triplets_eq!(triplets, expected);
@@ -190,13 +231,10 @@ mod tests {
     #[test]
     fn cotan_laplacian_calc() {
         let structure = get_test_structure();
-        let n = structure.vertices.len();
-
-        let temp = cotan_laplacian_triplets(&structure).unwrap();
-        let laplacian = SparseColMat::try_new_from_triplets(n, n, &temp).unwrap();
-        let triplets = sparse_as_triplets(&laplacian);
-
+        let (a, _, _, _) = laplacian_set(&structure).unwrap();
+        let triplets = sparse_as_triplets(&a);
         let expected = get_sparse_triplets("laplacian.coo");
+
         assert_triplets_eq!(triplets, expected);
     }
 
