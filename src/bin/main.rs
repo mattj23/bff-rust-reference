@@ -1,7 +1,7 @@
-use std::path::Path;
 use bff::mesh_structure::MeshStructure;
-use bff::Result;
 use bff::serialize::MeshData;
+use bff::Result;
+use std::path::Path;
 
 fn main() -> Result<()> {
     let target = Path::new("../sample_data/hyperboloid.msgpack");
@@ -9,7 +9,6 @@ fn main() -> Result<()> {
 
     let mesh = MeshData::load(&target)?;
     let structure = MeshStructure::new(mesh.vertices, mesh.faces);
-
 
     Ok(())
 }

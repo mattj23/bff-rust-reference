@@ -55,6 +55,14 @@ impl MeshStructure {
 
         Ok(&self.boundaries[0])
     }
+
+    pub fn inner_vertices(&self) -> Result<Vec<u32>> {
+        let boundary_set: HashSet<u32> = self.single_boundary_vertices()?.iter().copied().collect();
+        let inner: Vec<u32> = (0..self.vertices.len() as u32)
+            .filter(|&i| !boundary_set.contains(&i))
+            .collect();
+        Ok(inner)
+    }
 }
 
 /// Given an edge, return a key that can be used to identify the vertices that are connected by the

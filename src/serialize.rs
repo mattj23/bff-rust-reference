@@ -1,8 +1,8 @@
-use std::path::Path;
+use crate::Point3;
 use crate::Result;
 use rmp_serde::from_read;
 use serde::{Deserialize, Serialize};
-use crate::Point3;
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MeshData {

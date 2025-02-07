@@ -1,23 +1,35 @@
-pub mod serialize;
-pub mod mesh_structure;
 mod conformal;
+pub mod mesh_structure;
+pub mod serialize;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub type Vector3 = nalgebra::SVector<f64, 3>;
 pub type Point3 = nalgebra::Point3<f64>;
 
-
 #[cfg(test)]
 mod test_utils {
-    use std::io::Read;
-    use faer::sparse::SparseColMat;
-    use zip::ZipArchive;
     use crate::mesh_structure::MeshStructure;
-    use crate::Point3;
     use crate::serialize::MeshData;
+    use crate::Point3;
+    use faer::sparse::SparseColMat;
+    use std::io::Read;
+    use zip::ZipArchive;
 
     const DATA_BYTES: &[u8] = include_bytes!("test_data.zip");
+
+    macro_rules! assert_triplets_eq {
+        ($a:ident, $b:ident) => {
+            assert_eq!($a.len(), $b.len());
+            for (i, (a, b)) in $a.iter().zip($b.iter()).enumerate() {
+                assert_eq!(a.0, b.0, "Row mismatch at index {}", i);
+                assert_eq!(a.1, b.1, "Column mismatch at index {}", i);
+                assert_relative_eq!(a.2, b.2, max_relative = 1e-8);
+            }
+        };
+    }
+
+    pub(crate) use assert_triplets_eq;
 
     pub fn sparse_as_triplets(sparse: &SparseColMat<u32, f64>) -> Vec<(u32, u32, f64)> {
         let mut triplets = Vec::new();
@@ -71,7 +83,10 @@ mod test_utils {
 
     pub fn get_sparse_triplets(file_name: &str) -> Vec<(u32, u32, f64)> {
         let bytes = get_file_bytes(file_name);
-        rmp_serde::from_read(std::io::Cursor::new(bytes)).unwrap()
+        let mut triplets: Vec<(u32, u32, f64)> =
+            rmp_serde::from_read(std::io::Cursor::new(bytes)).unwrap();
+        triplets.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        triplets
     }
 
     pub fn get_test_structure() -> MeshStructure {
@@ -85,5 +100,4 @@ mod test_utils {
         assert_eq!(vertices.len(), 320);
         assert_eq!(faces.len(), 571);
     }
-
 }
