@@ -169,6 +169,76 @@ mod tests {
     use std::ops::Mul;
 
     #[test]
+    fn dirichlet_boundary_im_k() -> Result<()> {
+        let mesh = get_test_structure();
+        let (_, aii, aib, abb) = laplacian_set(&mesh)?;
+
+        let all_defects = angle_defects(&mesh)?;
+        let inner_defects = mesh
+            .inner_vertices()?
+            .iter()
+            .map(|i| all_defects[*i as usize])
+            .collect::<Vec<_>>();
+
+        let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
+
+        let ub = Mat::<f64>::zeros(mesh.single_boundary_vertices()?.len(), 1);
+        let value = &defects + &aib * &ub;
+
+        let aii_lu = aii.sp_lu().unwrap();
+        let ui = -aii_lu.solve(&value);
+
+        let h = -&aib.transpose() * &ui - &abb * &ub;
+        let h = h.row_iter().map(|r| r[0]).collect::<Vec<f64>>();
+
+        let im_k = mesh.single_boundary_vertices()?.iter().zip(h.iter())
+            .map(|(&vi, &hv)| all_defects[vi as usize] - hv)
+            .collect::<Vec<f64>>();
+
+        let expected = get_float_vector("dirichlet_im_k.floatvec");
+
+        assert_eq!(im_k.len(), expected.len());
+        for (test, known) in im_k.iter().zip(expected.iter()) {
+            assert_relative_eq!(test, known, epsilon = 1e-6);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn dirichlet_h() {
+        let mesh = get_test_structure();
+        let (a, aii, aib, abb) = laplacian_set(&mesh).unwrap();
+
+        let all_defects = angle_defects(&mesh).unwrap();
+        let inner_defects = mesh
+            .inner_vertices()
+            .unwrap()
+            .iter()
+            .map(|i| all_defects[*i as usize])
+            .collect::<Vec<_>>();
+
+        let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
+
+        let ub = Mat::<f64>::zeros(mesh.single_boundary_vertices().unwrap().len(), 1);
+        let value = &defects + &aib * &ub;
+
+        let aii_lu = aii.sp_lu().unwrap();
+        let ui = -aii_lu.solve(&value);
+
+        let h = -&aib.transpose() * &ui - &abb * &ub;
+        let check: Vec<f64> = h.row_iter().map(|r| r[0]).collect();
+
+        let expected = get_float_vector("dirichlet_h.floatvec");
+
+        assert_eq!(check.len(), expected.len());
+        for (test, known) in check.iter().zip(expected.iter()) {
+            assert_relative_eq!(test, known, epsilon = 1e-6);
+        }
+    }
+
+
+    #[test]
     fn dirichlet_ui() {
         let mesh = get_test_structure();
         let (a, aii, aib, abb) = laplacian_set(&mesh).unwrap();
