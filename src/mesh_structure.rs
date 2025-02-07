@@ -15,14 +15,46 @@ pub struct MeshStructure {
     /// which are the two vertices of the edge.
     pub edges: Vec<[u32; 2]>,
 
+    /// A list of the lengths of each edge in the mesh. The order of the lengths is the same as the
+    /// order of the edges in the `edges` list.
+    pub edge_lengths: Vec<f64>,
+
     /// A list of edges associated with each face. A face at index `i` in `face_edges` corresponds
     /// with the face at index `i` in `faces`. The `faces` list references the three vertices,
     /// while the `face_edges` list references the three edges of the face.
     pub face_edges: Vec<[u32; 3]>,
 
     /// A list of the different boundaries in the mesh. Each boundary is a list of indices into the
-    /// ?? list
+    /// vertices list that form a loop.
     pub boundaries: Vec<Vec<u32>>,
+}
+
+impl MeshStructure {
+    pub fn new(vertices: Vec<Point3>, faces: Vec<[u32; 3]>) -> Result<Self> {
+        let (edges, face_edges, boundaries) = identify_edges(&faces)?;
+
+        let edge_lengths = edges
+            .iter()
+            .map(|[i, j]| (vertices[*i as usize] - vertices[*j as usize]).norm())
+            .collect();
+
+        Ok(Self {
+            vertices,
+            faces,
+            edges,
+            edge_lengths,
+            face_edges,
+            boundaries,
+        })
+    }
+
+    pub fn single_boundary_vertices(&self) -> Result<&[u32]> {
+        if self.boundaries.len() != 1 {
+            return Err("Mesh must have exactly one boundary".into());
+        }
+
+        Ok(&self.boundaries[0])
+    }
 }
 
 /// Given an edge, return a key that can be used to identify the vertices that are connected by the
