@@ -1,7 +1,7 @@
 mod conformal;
+mod layout;
 pub mod mesh_structure;
 pub mod serialize;
-mod layout;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -30,6 +30,7 @@ mod test_utils {
         };
     }
 
+    use crate::conformal::{calc_face_angles, laplacian_set};
     pub(crate) use assert_triplets_eq;
 
     pub fn sparse_as_triplets(sparse: &SparseColMat<u32, f64>) -> Vec<(u32, u32, f64)> {
@@ -99,10 +100,13 @@ mod test_utils {
     fn end_to_end() -> Result<()> {
         let mesh = get_test_structure();
 
-        let inner_indices = mesh.inner_vertices()?;
-        let boundary_indices = mesh.single_boundary_vertices()?;
+        let i_inner = mesh.inner_vertices()?;
+        let i_bound = mesh.single_boundary_vertices()?;
 
+        let face_angles = calc_face_angles(&mesh)?;
 
+        // let triplets = cot
+        // let (a, aii, aib, abb) = laplacian_set(mesh.vertices.len())
 
         Ok(())
     }

@@ -1,6 +1,9 @@
 use crate::mesh_structure::MeshStructure;
 use crate::Result;
+use faer::linalg::solvers::Solve;
+use faer::sparse::linalg::solvers::Lu;
 use faer::sparse::{SparseColMat, Triplet};
+use faer::Mat;
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
@@ -21,7 +24,7 @@ fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
 /// Calculate the angles of the faces in the mesh. Each element `i` of the returned list corresponds
 /// with the face at `mesh.faces[i]`, while the value at `j` for that face corresponds with the
 /// angle formed at the vertex opposite to the `j`th edge `mesh.face_edges[i][j]`.
-fn face_angles(mesh: &MeshStructure) -> Result<Vec<[f64; 3]>> {
+pub fn calc_face_angles(mesh: &MeshStructure) -> Result<Vec<[f64; 3]>> {
     let mut angles: Vec<[f64; 3]> = Vec::with_capacity(mesh.faces.len());
 
     for face_indices in mesh.face_edges.iter() {
@@ -49,14 +52,18 @@ fn face_angles(mesh: &MeshStructure) -> Result<Vec<[f64; 3]>> {
     Ok(angles)
 }
 
-fn angle_defects(mesh: &MeshStructure) -> Result<Vec<f64>> {
-    let mut thetas = vec![2.0 * PI; mesh.vertices.len()];
-    for &i in mesh.single_boundary_vertices()? {
+pub fn calc_angle_defects(
+    n: usize,
+    i_bound: &[u32],
+    face_angles: &[[f64; 3]],
+    faces: &[[u32; 3]],
+) -> Result<Vec<f64>> {
+    let mut thetas = vec![2.0 * PI; n];
+    for &i in i_bound {
         thetas[i as usize] = PI;
     }
 
-    let angles = face_angles(mesh)?;
-    for (face, angles) in mesh.faces.iter().zip(angles.iter()) {
+    for (face, angles) in faces.iter().zip(face_angles.iter()) {
         thetas[face[0] as usize] -= angles[0];
         thetas[face[1] as usize] -= angles[1];
         thetas[face[2] as usize] -= angles[2];
@@ -65,8 +72,8 @@ fn angle_defects(mesh: &MeshStructure) -> Result<Vec<f64>> {
     Ok(thetas)
 }
 
-fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32, u32, f64>>> {
-    let cotans = face_angles(mesh)?
+pub fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32, u32, f64>>> {
+    let cotans = calc_face_angles(mesh)?
         .iter()
         .map(|angles| {
             [
@@ -150,10 +157,12 @@ fn slice_triplets_to_sparse(
 /// * `triplets`: the total set of triplets for the cotangent laplacian matrix
 ///
 /// returns: Result<(SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>), Box<dyn Error, Global>>
-pub fn laplacian_set(n: usize, i_inner: &[u32], i_bound: &[u32], triplets: &[Triplet<u32, u32, f64>]) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
-    // let triplets = cotan_laplacian_triplets(&mesh)?;
-
-    // The complete cotangent laplacian matrix A
+pub fn laplacian_set(
+    n: usize,
+    i_inner: &[u32],
+    i_bound: &[u32],
+    triplets: &[Triplet<u32, u32, f64>],
+) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
     let a = SparseColMat::try_new_from_triplets(n, n, &triplets)?;
     let aii = slice_triplets_to_sparse(&i_inner, &i_inner, &triplets)?;
     let aib = slice_triplets_to_sparse(&i_inner, &i_bound, &triplets)?;
@@ -162,8 +171,35 @@ pub fn laplacian_set(n: usize, i_inner: &[u32], i_bound: &[u32], triplets: &[Tri
     Ok((a, aii, aib, abb))
 }
 
-pub fn dirichlet_boundary(mesh: &MeshStructure) -> Result<Vec<f64>> {
-    todo!()
+pub fn dirichlet_boundary(
+    aii_lu: &Lu<u32, f64>,
+    aib: &SparseMat,
+    abb: &SparseMat,
+    i_inner: &[u32],
+    i_bounds: &[u32],
+    angle_defects: &[f64],
+) -> Result<Vec<f64>> {
+    let inner_defects = i_inner
+        .iter()
+        .map(|i| angle_defects[*i as usize])
+        .collect::<Vec<_>>();
+
+    let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
+
+    let ub = Mat::<f64>::zeros(i_bounds.len(), 1);
+    let value = &defects + aib * &ub;
+    let ui = -aii_lu.solve(&value);
+
+    let h = -aib.transpose() * &ui - abb * &ub;
+    let h = h.row_iter().map(|r| r[0]).collect::<Vec<f64>>();
+
+    let im_k = i_bounds
+        .iter()
+        .zip(h.iter())
+        .map(|(&vi, &hv)| angle_defects[vi as usize] - hv)
+        .collect::<Vec<f64>>();
+
+    Ok(im_k)
 }
 
 #[cfg(test)]
@@ -181,35 +217,29 @@ mod tests {
         let boundary_indices = mesh.single_boundary_vertices()?;
         let triplets = cotan_laplacian_triplets(&mesh)?;
 
-        laplacian_set(mesh.vertices.len(), &inner_indices, &boundary_indices, &triplets)
+        laplacian_set(
+            mesh.vertices.len(),
+            &inner_indices,
+            &boundary_indices,
+            &triplets,
+        )
     }
 
     #[test]
     fn dirichlet_boundary_im_k() -> Result<()> {
         let mesh = get_test_structure();
         let (_, aii, aib, abb) = laplacian_mock()?;
+        let aii_lu = aii.sp_lu()?;
 
-        let all_defects = angle_defects(&mesh)?;
-        let inner_defects = mesh
-            .inner_vertices()?
-            .iter()
-            .map(|i| all_defects[*i as usize])
-            .collect::<Vec<_>>();
-
-        let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
-
-        let ub = Mat::<f64>::zeros(mesh.single_boundary_vertices()?.len(), 1);
-        let value = &defects + &aib * &ub;
-
-        let aii_lu = aii.sp_lu().unwrap();
-        let ui = -aii_lu.solve(&value);
-
-        let h = -&aib.transpose() * &ui - &abb * &ub;
-        let h = h.row_iter().map(|r| r[0]).collect::<Vec<f64>>();
-
-        let im_k = mesh.single_boundary_vertices()?.iter().zip(h.iter())
-            .map(|(&vi, &hv)| all_defects[vi as usize] - hv)
-            .collect::<Vec<f64>>();
+        let all_defects = mock_defects(&mesh)?;
+        let im_k = dirichlet_boundary(
+            &aii_lu,
+            &aib,
+            &abb,
+            &mesh.inner_vertices()?,
+            &mesh.single_boundary_vertices()?,
+            &all_defects,
+        )?;
 
         let expected = get_float_vector("dirichlet_im_k.floatvec");
 
@@ -222,14 +252,13 @@ mod tests {
     }
 
     #[test]
-    fn dirichlet_h() -> Result<()>{
+    fn dirichlet_h() -> Result<()> {
         let mesh = get_test_structure();
         let (a, aii, aib, abb) = laplacian_mock()?;
 
-        let all_defects = angle_defects(&mesh).unwrap();
+        let all_defects = mock_defects(&mesh)?;
         let inner_defects = mesh
-            .inner_vertices()
-            .unwrap()
+            .inner_vertices()?
             .iter()
             .map(|i| all_defects[*i as usize])
             .collect::<Vec<_>>();
@@ -255,16 +284,14 @@ mod tests {
         Ok(())
     }
 
-
     #[test]
-    fn dirichlet_ui() -> Result<()>{
+    fn dirichlet_ui() -> Result<()> {
         let mesh = get_test_structure();
         let (a, aii, aib, abb) = laplacian_mock()?;
 
-        let all_defects = angle_defects(&mesh).unwrap();
+        let all_defects = mock_defects(&mesh)?;
         let inner_defects = mesh
-            .inner_vertices()
-            .unwrap()
+            .inner_vertices()?
             .iter()
             .map(|i| all_defects[*i as usize])
             .collect::<Vec<_>>();
@@ -289,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn laplacian_abb() -> Result<()>{
+    fn laplacian_abb() -> Result<()> {
         let (_, _, _, abb) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&abb);
         let expected = get_sparse_triplets("abb.coo");
@@ -300,7 +327,7 @@ mod tests {
     }
 
     #[test]
-    fn laplacian_aib() -> Result<()>{
+    fn laplacian_aib() -> Result<()> {
         let (_, _, aib, _) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&aib);
         let expected = get_sparse_triplets("aib.coo");
@@ -311,7 +338,7 @@ mod tests {
     }
 
     #[test]
-    fn laplacian_aii() -> Result<()>{
+    fn laplacian_aii() -> Result<()> {
         let (_, aii, _, _) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&aii);
         let expected = get_sparse_triplets("aii.coo");
@@ -333,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn boundary_edge_length_calc() -> Result<()>{
+    fn boundary_edge_length_calc() -> Result<()> {
         let structure = get_test_structure();
         let edge_lengths = boundary_edge_lengths(&structure)?;
 
@@ -350,7 +377,7 @@ mod tests {
     #[test]
     fn triangle_face_angles() {
         let structure = get_test_structure();
-        let angles = face_angles(&structure).unwrap();
+        let angles = calc_face_angles(&structure).unwrap();
 
         let expected_data = get_float_matrix("tri_angles.floatmat");
         let expected: Vec<[f64; 3]> = expected_data
@@ -367,16 +394,28 @@ mod tests {
     }
 
     #[test]
-    fn angle_defects_calc() {
+    fn angle_defects_calc() -> Result<()> {
         let structure = get_test_structure();
         let expected = get_float_vector("angle_defects.floatvec");
 
-        let defects = angle_defects(&structure).unwrap();
+        let defects = mock_defects(&structure)?;
 
         assert_eq!(defects.len(), expected.len());
 
         for (test, known) in defects.iter().zip(expected.iter()) {
             assert_relative_eq!(test, known, epsilon = 1e-6);
         }
+
+        Ok(())
+    }
+
+    fn mock_defects(mesh: &MeshStructure) -> Result<Vec<f64>> {
+        let angles = calc_face_angles(mesh)?;
+        calc_angle_defects(
+            mesh.vertices.len(),
+            &mesh.single_boundary_vertices()?,
+            &angles,
+            &mesh.faces,
+        )
     }
 }
