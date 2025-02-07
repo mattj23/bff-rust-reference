@@ -1,3 +1,5 @@
+use faer::sparse::SparseColMat;
+
 mod conformal;
 mod layout;
 pub mod mesh_structure;
@@ -7,6 +9,8 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 pub type Vector3 = nalgebra::SVector<f64, 3>;
 pub type Point3 = nalgebra::Point3<f64>;
+pub type Point2 = nalgebra::Point2<f64>;
+pub type SparseMat = SparseColMat<u32, f64>;
 
 #[cfg(test)]
 mod test_utils {
@@ -14,8 +18,9 @@ mod test_utils {
     use crate::mesh_structure::MeshStructure;
     use crate::serialize::MeshData;
     use faer::sparse::SparseColMat;
-    use std::io::Read;
     use faer::Mat;
+    use std::io::Read;
+    use approx::assert_relative_eq;
     use zip::ZipArchive;
 
     const DATA_BYTES: &[u8] = include_bytes!("test_data.zip");
@@ -31,9 +36,12 @@ mod test_utils {
         };
     }
 
-    use crate::conformal::{boundary_edge_lengths, calc_angle_defects, calc_face_angles, cotan_laplacian_triplets, dirichlet_boundary, laplacian_set};
+    use crate::conformal::{
+        boundary_edge_lengths, calc_angle_defects, calc_face_angles, cotan_laplacian_triplets,
+        dirichlet_boundary, laplacian_set,
+    };
+    use crate::layout::{best_fit_curve, extend_curve};
     pub(crate) use assert_triplets_eq;
-    use crate::layout::best_fit_curve;
 
     pub fn sparse_as_triplets(sparse: &SparseColMat<u32, f64>) -> Vec<(u32, u32, f64)> {
         let mut triplets = Vec::new();
@@ -112,8 +120,9 @@ mod test_utils {
         let triplets =
             cotan_laplacian_triplets(&face_angles, n_vert, &mesh.edges, &mesh.face_edges)?;
         let (a, aii, aib, abb) = laplacian_set(n_vert, &i_inner, &i_bound, &triplets)?;
-
+        let a_lu = a.sp_lu()?;
         let aii_lu = aii.sp_lu()?;
+
         let ub = Mat::<f64>::zeros(i_bound.len(), 1);
         let im_k = dirichlet_boundary(
             &ub,
@@ -127,7 +136,17 @@ mod test_utils {
 
         let boundary_edge_len = boundary_edge_lengths(&mesh)?;
 
-        // let uvb = best_fit_curve()
+        let uvb = best_fit_curve(&ub, &im_k, &i_bound, &boundary_edge_len)?;
+
+        let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
+
+        let expected_data = get_float_matrix("layout_uv.floatmat");
+        let expected = expected_data.iter().map(|r| Point2::new(r[0], r[1])).collect::<Vec<_>>();
+
+        assert_eq!(uv.len(), expected.len());
+        for (a, b) in uv.iter().zip(expected.iter()) {
+            assert_relative_eq!(a, b, max_relative = 1e-8);
+        }
 
         Ok(())
     }

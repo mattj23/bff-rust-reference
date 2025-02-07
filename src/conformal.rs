@@ -1,13 +1,11 @@
 use crate::mesh_structure::MeshStructure;
-use crate::Result;
+use crate::{Result, SparseMat};
 use faer::linalg::solvers::Solve;
 use faer::sparse::linalg::solvers::Lu;
 use faer::sparse::{SparseColMat, Triplet};
 use faer::Mat;
 use std::collections::HashMap;
 use std::f64::consts::PI;
-
-type SparseMat = SparseColMat<u32, f64>;
 
 pub fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
     Ok(mesh
