@@ -30,7 +30,10 @@ mod test_utils {
         };
     }
 
-    use crate::conformal::{calc_face_angles, laplacian_set};
+    use crate::conformal::{
+        calc_angle_defects, calc_face_angles, cotan_laplacian_triplets, dirichlet_boundary,
+        laplacian_set,
+    };
     pub(crate) use assert_triplets_eq;
 
     pub fn sparse_as_triplets(sparse: &SparseColMat<u32, f64>) -> Vec<(u32, u32, f64)> {
@@ -99,14 +102,27 @@ mod test_utils {
     #[test]
     fn end_to_end() -> Result<()> {
         let mesh = get_test_structure();
+        let n_vert = mesh.vertices.len();
 
         let i_inner = mesh.inner_vertices()?;
         let i_bound = mesh.single_boundary_vertices()?;
 
         let face_angles = calc_face_angles(&mesh)?;
+        let angle_defects = calc_angle_defects(n_vert, &i_bound, &face_angles, &mesh.faces)?;
 
-        // let triplets = cot
-        // let (a, aii, aib, abb) = laplacian_set(mesh.vertices.len())
+        let triplets =
+            cotan_laplacian_triplets(&face_angles, n_vert, &mesh.edges, &mesh.face_edges)?;
+        let (a, aii, aib, abb) = laplacian_set(n_vert, &i_inner, &i_bound, &triplets)?;
+
+        let aii_lu = aii.sp_lu()?;
+        let im_k = dirichlet_boundary(
+            &aii_lu,
+            &aib,
+            &abb,
+            &mesh.inner_vertices()?,
+            &mesh.single_boundary_vertices()?,
+            &angle_defects,
+        )?;
 
         Ok(())
     }

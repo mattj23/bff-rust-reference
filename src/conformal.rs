@@ -72,8 +72,13 @@ pub fn calc_angle_defects(
     Ok(thetas)
 }
 
-pub fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32, u32, f64>>> {
-    let cotans = calc_face_angles(mesh)?
+pub fn cotan_laplacian_triplets(
+    face_angles: &[[f64; 3]],
+    n_vert: usize,
+    edges: &[[u32; 2]],
+    face_edges: &[[u32; 3]],
+) -> Result<Vec<Triplet<u32, u32, f64>>> {
+    let cotans = face_angles
         .iter()
         .map(|angles| {
             [
@@ -84,8 +89,8 @@ pub fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32,
         })
         .collect::<Vec<[f64; 3]>>();
 
-    let mut values = vec![0.0; mesh.edges.len()];
-    for (face, cotan) in mesh.face_edges.iter().zip(cotans.iter()) {
+    let mut values = vec![0.0; edges.len()];
+    for (face, cotan) in face_edges.iter().zip(cotans.iter()) {
         for (i, &edge) in face.iter().enumerate() {
             values[edge as usize] += cotan[i];
         }
@@ -97,8 +102,8 @@ pub fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32,
     }
 
     // Prepare the diagonal values
-    let mut diagonals = vec![0.0; mesh.vertices.len()];
-    for (edge, &value) in mesh.edges.iter().zip(values.iter()) {
+    let mut diagonals = vec![0.0; n_vert];
+    for (edge, &value) in edges.iter().zip(values.iter()) {
         diagonals[edge[0] as usize] += value;
         diagonals[edge[1] as usize] += value;
     }
@@ -109,7 +114,7 @@ pub fn cotan_laplacian_triplets(mesh: &MeshStructure) -> Result<Vec<Triplet<u32,
         triplets.push(Triplet::new(i as u32, i as u32, value));
     }
 
-    for (edge, &value) in mesh.edges.iter().zip(values.iter()) {
+    for (edge, &value) in edges.iter().zip(values.iter()) {
         triplets.push(Triplet::new(edge[0], edge[1], -value));
         triplets.push(Triplet::new(edge[1], edge[0], -value));
     }
@@ -213,16 +218,18 @@ mod tests {
 
     fn laplacian_mock() -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
         let mesh = get_test_structure();
-        let inner_indices = mesh.inner_vertices()?;
-        let boundary_indices = mesh.single_boundary_vertices()?;
-        let triplets = cotan_laplacian_triplets(&mesh)?;
+        let n_vert = mesh.vertices.len();
 
-        laplacian_set(
-            mesh.vertices.len(),
-            &inner_indices,
-            &boundary_indices,
-            &triplets,
-        )
+        let i_inner = mesh.inner_vertices()?;
+        let i_bound = mesh.single_boundary_vertices()?;
+
+        let face_angles = calc_face_angles(&mesh)?;
+        let angle_defects = calc_angle_defects(n_vert, &i_bound, &face_angles, &mesh.faces)?;
+
+        let triplets =
+            cotan_laplacian_triplets(&face_angles, n_vert, &mesh.edges, &mesh.face_edges)?;
+
+        laplacian_set(mesh.vertices.len(), &i_inner, &i_bound, &triplets)
     }
 
     #[test]
