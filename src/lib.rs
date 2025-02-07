@@ -15,6 +15,7 @@ mod test_utils {
     use crate::serialize::MeshData;
     use faer::sparse::SparseColMat;
     use std::io::Read;
+    use faer::Mat;
     use zip::ZipArchive;
 
     const DATA_BYTES: &[u8] = include_bytes!("test_data.zip");
@@ -30,11 +31,9 @@ mod test_utils {
         };
     }
 
-    use crate::conformal::{
-        calc_angle_defects, calc_face_angles, cotan_laplacian_triplets, dirichlet_boundary,
-        laplacian_set,
-    };
+    use crate::conformal::{boundary_edge_lengths, calc_angle_defects, calc_face_angles, cotan_laplacian_triplets, dirichlet_boundary, laplacian_set};
     pub(crate) use assert_triplets_eq;
+    use crate::layout::best_fit_curve;
 
     pub fn sparse_as_triplets(sparse: &SparseColMat<u32, f64>) -> Vec<(u32, u32, f64)> {
         let mut triplets = Vec::new();
@@ -115,7 +114,9 @@ mod test_utils {
         let (a, aii, aib, abb) = laplacian_set(n_vert, &i_inner, &i_bound, &triplets)?;
 
         let aii_lu = aii.sp_lu()?;
+        let ub = Mat::<f64>::zeros(i_bound.len(), 1);
         let im_k = dirichlet_boundary(
+            &ub,
             &aii_lu,
             &aib,
             &abb,
@@ -123,6 +124,10 @@ mod test_utils {
             &mesh.single_boundary_vertices()?,
             &angle_defects,
         )?;
+
+        let boundary_edge_len = boundary_edge_lengths(&mesh)?;
+
+        // let uvb = best_fit_curve()
 
         Ok(())
     }

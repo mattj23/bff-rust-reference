@@ -9,7 +9,7 @@ use std::f64::consts::PI;
 
 type SparseMat = SparseColMat<u32, f64>;
 
-fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
+pub fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
     Ok(mesh
         .single_boundary_vertices()?
         .iter()
@@ -177,6 +177,7 @@ pub fn laplacian_set(
 }
 
 pub fn dirichlet_boundary(
+    ub: &Mat<f64>,
     aii_lu: &Lu<u32, f64>,
     aib: &SparseMat,
     abb: &SparseMat,
@@ -191,11 +192,10 @@ pub fn dirichlet_boundary(
 
     let defects = Mat::from_fn(inner_defects.len(), 1, |i, _| inner_defects[i]);
 
-    let ub = Mat::<f64>::zeros(i_bounds.len(), 1);
-    let value = &defects + aib * &ub;
+    let value = &defects + aib * ub;
     let ui = -aii_lu.solve(&value);
 
-    let h = -aib.transpose() * &ui - abb * &ub;
+    let h = -aib.transpose() * &ui - abb * ub;
     let h = h.row_iter().map(|r| r[0]).collect::<Vec<f64>>();
 
     let im_k = i_bounds
@@ -239,7 +239,9 @@ mod tests {
         let aii_lu = aii.sp_lu()?;
 
         let all_defects = mock_defects(&mesh)?;
+        let ub = Mat::<f64>::zeros(mesh.single_boundary_vertices()?.len(), 1);
         let im_k = dirichlet_boundary(
+            &ub,
             &aii_lu,
             &aib,
             &abb,
