@@ -1,6 +1,7 @@
 mod conformal;
 pub mod mesh_structure;
 pub mod serialize;
+mod layout;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -9,9 +10,9 @@ pub type Point3 = nalgebra::Point3<f64>;
 
 #[cfg(test)]
 mod test_utils {
+    use super::*;
     use crate::mesh_structure::MeshStructure;
     use crate::serialize::MeshData;
-    use crate::Point3;
     use faer::sparse::SparseColMat;
     use std::io::Read;
     use zip::ZipArchive;
@@ -95,9 +96,14 @@ mod test_utils {
     }
 
     #[test]
-    fn test_data_zip() {
-        let (vertices, faces) = get_mesh_data();
-        assert_eq!(vertices.len(), 320);
-        assert_eq!(faces.len(), 571);
+    fn end_to_end() -> Result<()> {
+        let mesh = get_test_structure();
+
+        let inner_indices = mesh.inner_vertices()?;
+        let boundary_indices = mesh.single_boundary_vertices()?;
+
+
+
+        Ok(())
     }
 }
