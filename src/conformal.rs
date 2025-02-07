@@ -140,17 +140,24 @@ fn slice_triplets_to_sparse(
     SparseColMat::try_new_from_triplets(rows.len(), cols.len(), &updated).map_err(|e| e.into())
 }
 
-pub fn laplacian_set(mesh: &MeshStructure) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
-    let triplets = cotan_laplacian_triplets(&mesh)?;
-    let inner = mesh.inner_vertices()?;
-    let boundary = mesh.single_boundary_vertices()?;
+/// Calculate the set of sparse laplacian matrices A, AII, AIB, and ABB for the given data.
+///
+/// # Arguments
+///
+/// * `n`: the number of vertices in the mesh
+/// * `i_inner`: the indices of the inner vertices, in their original order
+/// * `i_bound`: the indices of the boundary vertices, in their original order
+/// * `triplets`: the total set of triplets for the cotangent laplacian matrix
+///
+/// returns: Result<(SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>, SparseColMat<u32, f64, usize, usize>), Box<dyn Error, Global>>
+pub fn laplacian_set(n: usize, i_inner: &[u32], i_bound: &[u32], triplets: &[Triplet<u32, u32, f64>]) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
+    // let triplets = cotan_laplacian_triplets(&mesh)?;
 
     // The complete cotangent laplacian matrix A
-    let a =
-        SparseColMat::try_new_from_triplets(mesh.vertices.len(), mesh.vertices.len(), &triplets)?;
-    let aii = slice_triplets_to_sparse(&inner, &inner, &triplets)?;
-    let aib = slice_triplets_to_sparse(&inner, &boundary, &triplets)?;
-    let abb = slice_triplets_to_sparse(&boundary, &boundary, &triplets)?;
+    let a = SparseColMat::try_new_from_triplets(n, n, &triplets)?;
+    let aii = slice_triplets_to_sparse(&i_inner, &i_inner, &triplets)?;
+    let aib = slice_triplets_to_sparse(&i_inner, &i_bound, &triplets)?;
+    let abb = slice_triplets_to_sparse(&i_bound, &i_bound, &triplets)?;
 
     Ok((a, aii, aib, abb))
 }
@@ -168,10 +175,19 @@ mod tests {
     use faer::Mat;
     use std::ops::Mul;
 
+    fn laplacian_mock() -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
+        let mesh = get_test_structure();
+        let inner_indices = mesh.inner_vertices()?;
+        let boundary_indices = mesh.single_boundary_vertices()?;
+        let triplets = cotan_laplacian_triplets(&mesh)?;
+
+        laplacian_set(mesh.vertices.len(), &inner_indices, &boundary_indices, &triplets)
+    }
+
     #[test]
     fn dirichlet_boundary_im_k() -> Result<()> {
         let mesh = get_test_structure();
-        let (_, aii, aib, abb) = laplacian_set(&mesh)?;
+        let (_, aii, aib, abb) = laplacian_mock()?;
 
         let all_defects = angle_defects(&mesh)?;
         let inner_defects = mesh
@@ -206,9 +222,9 @@ mod tests {
     }
 
     #[test]
-    fn dirichlet_h() {
+    fn dirichlet_h() -> Result<()>{
         let mesh = get_test_structure();
-        let (a, aii, aib, abb) = laplacian_set(&mesh).unwrap();
+        let (a, aii, aib, abb) = laplacian_mock()?;
 
         let all_defects = angle_defects(&mesh).unwrap();
         let inner_defects = mesh
@@ -235,13 +251,15 @@ mod tests {
         for (test, known) in check.iter().zip(expected.iter()) {
             assert_relative_eq!(test, known, epsilon = 1e-6);
         }
+
+        Ok(())
     }
 
 
     #[test]
-    fn dirichlet_ui() {
+    fn dirichlet_ui() -> Result<()>{
         let mesh = get_test_structure();
-        let (a, aii, aib, abb) = laplacian_set(&mesh).unwrap();
+        let (a, aii, aib, abb) = laplacian_mock()?;
 
         let all_defects = angle_defects(&mesh).unwrap();
         let inner_defects = mesh
@@ -266,52 +284,58 @@ mod tests {
         for (test, known) in check.iter().zip(expected.iter()) {
             assert_relative_eq!(test, known, epsilon = 1e-6);
         }
+
+        Ok(())
     }
 
     #[test]
-    fn laplacian_abb() {
-        let structure = get_test_structure();
-        let (_, _, _, abb) = laplacian_set(&structure).unwrap();
+    fn laplacian_abb() -> Result<()>{
+        let (_, _, _, abb) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&abb);
         let expected = get_sparse_triplets("abb.coo");
 
         assert_triplets_eq!(triplets, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn laplacian_aib() {
-        let structure = get_test_structure();
-        let (_, _, aib, _) = laplacian_set(&structure).unwrap();
+    fn laplacian_aib() -> Result<()>{
+        let (_, _, aib, _) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&aib);
         let expected = get_sparse_triplets("aib.coo");
 
         assert_triplets_eq!(triplets, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn laplacian_aii() {
-        let structure = get_test_structure();
-        let (_, aii, _, _) = laplacian_set(&structure).unwrap();
+    fn laplacian_aii() -> Result<()>{
+        let (_, aii, _, _) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&aii);
         let expected = get_sparse_triplets("aii.coo");
 
         assert_triplets_eq!(triplets, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn cotan_laplacian_calc() {
-        let structure = get_test_structure();
-        let (a, _, _, _) = laplacian_set(&structure).unwrap();
+    fn cotan_laplacian_calc() -> Result<()> {
+        let (a, _, _, _) = laplacian_mock()?;
         let triplets = sparse_as_triplets(&a);
         let expected = get_sparse_triplets("laplacian.coo");
 
         assert_triplets_eq!(triplets, expected);
+
+        Ok(())
     }
 
     #[test]
-    fn boundary_edge_length_calc() {
+    fn boundary_edge_length_calc() -> Result<()>{
         let structure = get_test_structure();
-        let edge_lengths = boundary_edge_lengths(&structure).unwrap();
+        let edge_lengths = boundary_edge_lengths(&structure)?;
 
         let expected = get_float_vector("boundary_edge_lengths.floatvec");
         assert_eq!(edge_lengths.len(), expected.len());
@@ -319,6 +343,8 @@ mod tests {
         for (test, known) in edge_lengths.iter().zip(expected.iter()) {
             assert_relative_eq!(test, known, epsilon = 1e-6);
         }
+
+        Ok(())
     }
 
     #[test]
