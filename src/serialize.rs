@@ -1,7 +1,7 @@
 use crate::Point3;
 use crate::Result;
 use rmp_serde::from_read;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]

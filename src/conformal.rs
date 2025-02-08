@@ -222,7 +222,7 @@ mod tests {
         let i_bound = mesh.single_boundary_vertices()?;
 
         let face_angles = calc_face_angles(&mesh)?;
-        let angle_defects = calc_angle_defects(n_vert, &i_bound, &face_angles, &mesh.faces)?;
+        // let angle_defects = calc_angle_defects(n_vert, &i_bound, &face_angles, &mesh.faces)?;
 
         let triplets =
             cotan_laplacian_triplets(&face_angles, n_vert, &mesh.edges, &mesh.face_edges)?;
