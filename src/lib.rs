@@ -192,18 +192,18 @@ mod test_utils {
 
         let _uvb = best_fit_curve(&ub, &im_k, &boundary_edge_len)?;
 
-        let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
-
-        let expected_data = get_float_matrix("layout_uv.floatmat");
-        let expected = expected_data
-            .iter()
-            .map(|r| Point2::new(r[0], r[1]))
-            .collect::<Vec<_>>();
-
-        assert_eq!(uv.len(), expected.len());
-        for (a, b) in uv.iter().zip(expected.iter()) {
-            assert_relative_eq!(a, b, max_relative = 1e-8);
-        }
+        // let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
+        //
+        // let expected_data = get_float_matrix("layout_uv.floatmat");
+        // let expected = expected_data
+        //     .iter()
+        //     .map(|r| Point2::new(r[0], r[1]))
+        //     .collect::<Vec<_>>();
+        //
+        // assert_eq!(uv.len(), expected.len());
+        // for (a, b) in uv.iter().zip(expected.iter()) {
+        //     assert_relative_eq!(a, b, max_relative = 1e-8);
+        // }
 
         Ok(())
     }

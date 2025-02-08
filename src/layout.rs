@@ -1,4 +1,5 @@
 use crate::{invert_2x2, single_col_matrix, Point2, Point3, Result, SparseMat};
+use faer::linalg::solvers::Solve;
 use faer::sparse::linalg::solvers::Lu;
 use faer::sparse::Triplet;
 use faer::Mat;
@@ -111,33 +112,131 @@ pub fn best_fit_curve(ub: &Mat<f64>, im_k: &[f64], b_lengths: &[f64]) -> Result<
     }))
 }
 
+fn calc_extend_h(n_vert: usize, i_bound: &[u32], uvb: &Mat<f64>) -> Mat<f64> {
+    let mut h = Mat::zeros(n_vert, 1);
+    let bn = uvb.shape().0;
+    for (i_b, &i_all) in i_bound.iter().enumerate() {
+        // The value `i_b` is the index of the boundary vertex in the `i_bound` array, and `i_all`
+        // is the index of the same boundary vertex in the `vertices` array.
+        let i_b_prev = (i_b + bn - 1) % bn;
+        let i_b_next = (i_b + 1) % bn;
+        h[(i_all as usize, 0)] = 0.5 * (uvb[(i_b_prev, 0)] - uvb[(i_b_next, 0)]);
+    }
+
+    h
+}
+
+pub fn calc_extend_uv_xs(
+    n_vert: usize,
+    i_bound: &[u32],
+    i_inner: &[u32],
+    uvb: &Mat<f64>,
+    aib: &SparseMat,
+    aii_lu: &Lu<u32, f64>,
+) -> Mat<f64> {
+    let mut uv = Mat::zeros(n_vert, 2);
+
+    // Copy the boundary vertex x values into the first column of the uv matrix from the ubv matrix
+    for (&i_b, &v) in i_bound.iter().zip(uvb.col_as_slice(0)) {
+        uv[(i_b as usize, 0)] = v;
+    }
+
+    let core = aib * &uvb.subcols(0, 1);
+    let uv_inner = aii_lu.solve(-core);
+
+    for (&i, &v) in i_inner.iter().zip(uv_inner.col_as_slice(0)) {
+        uv[(i as usize, 0)] = v;
+    }
+
+    uv
+}
+
 pub fn extend_curve(
-    _a_lu: &Lu<u32, f64>,
-    _aii_lu: &Lu<u32, f64>,
-    _aib: &SparseMat,
-    _vertices: &[Point3],
-    _i_bound: &[u32],
-    _i_inner: &[u32],
-) -> Result<Vec<Point2>> {
-    todo!("Implement extend_curve")
+    a_lu: &Lu<u32, f64>,
+    aii_lu: &Lu<u32, f64>,
+    aib: &SparseMat,
+    uvb: &Mat<f64>,
+    n_vert: usize,
+    i_bound: &[u32],
+    i_inner: &[u32],
+) -> Result<Vec<[f64; 2]>> {
+    // Calculate the x values for all vertices
+    let uv = calc_extend_uv_xs(n_vert, i_bound, i_inner, uvb, aib, aii_lu);
+
+    // Solve for the y values
+    let h = calc_extend_h(n_vert, i_bound, uvb);
+    let y = a_lu.solve(-&h);
+
+    Ok(uv.col_as_slice(0).iter().zip(y.col_as_slice(0).iter())
+        .map(|(&x, &y)| [x, y])
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::conformal::boundary_edge_lengths;
+    use crate::conformal::tests::laplacian_mock;
     use crate::invert_2x2;
     use crate::test_utils::*;
     use approx::assert_relative_eq;
 
-    fn as_vec(mat: &Mat<f64>) -> Vec<Vec<f64>> {
-        mat.row_iter()
-            .map(|r| r.iter().copied().collect())
-            .collect()
+    #[test]
+    fn extend_curve_full() -> Result<()> {
+        let mesh = get_test_structure();
+        let i_bound = mesh.single_boundary_vertices()?;
+        let i_inner = mesh.inner_vertices()?;
+        let (_, aii, aib, a) = laplacian_mock()?;
+        let a_lu = a.sp_lu()?;
+        let aii_lu = aii.sp_lu()?;
+        let uvb = mock_uvb();
+
+        let uv = extend_curve(&a_lu, &aii_lu, &aib, &uvb, mesh.vertices.len(), &i_bound, &i_inner)?;
+        let expected = get_float_matrix("layout_uv.floatmat");
+
+        assert_matrices_eq!(uv, expected, 1e-8);
+
+        Ok(())
     }
 
-    fn mock_im_k() -> Vec<f64> {
-        get_float_vector("dirichlet_im_k.floatvec")
+    #[test]
+    fn extend_curve_uv_xs() -> Result<()> {
+        let mesh = get_test_structure();
+        let i_bound = mesh.single_boundary_vertices()?;
+        let (_, aii, aib, _) = laplacian_mock()?;
+        let aii_lu = aii.sp_lu()?;
+
+        let uv_xs = calc_extend_uv_xs(
+            mesh.vertices.len(),
+            &i_bound,
+            &mesh.inner_vertices()?,
+            &mock_uvb(),
+            &aib,
+            &aii_lu,
+        );
+
+        let expected = get_float_matrix("extendcurve_uv_pre_extension.floatmat");
+        let check = as_vec(&uv_xs);
+
+        assert_matrices_eq!(check, expected, 1e-8);
+
+        Ok(())
+    }
+
+    #[test]
+    fn extend_curve_h() -> Result<()> {
+        let mesh = get_test_structure();
+        let i_bound = mesh.single_boundary_vertices()?;
+        let uvb = mock_uvb();
+
+        let h = calc_extend_h(mesh.vertices.len(), &i_bound, &uvb);
+
+        let expected = get_float_vector("extendcurve_h.floatvec");
+        let check = h.col_as_slice(0).to_vec();
+
+        assert_vectors_eq!(check, expected);
+
+        Ok(())
     }
 
     #[test]
@@ -294,5 +393,20 @@ mod tests {
 
         assert_vectors_eq!(check, expected);
         Ok(())
+    }
+
+    fn as_vec(mat: &Mat<f64>) -> Vec<Vec<f64>> {
+        mat.row_iter()
+            .map(|r| r.iter().copied().collect())
+            .collect()
+    }
+
+    fn mock_im_k() -> Vec<f64> {
+        get_float_vector("dirichlet_im_k.floatvec")
+    }
+
+    fn mock_uvb() -> Mat<f64> {
+        let data = get_float_matrix("extendcurve_uvb.floatmat");
+        Mat::from_fn(data.len(), data[0].len(), |i, j| data[i][j])
     }
 }

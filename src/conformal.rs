@@ -109,7 +109,8 @@ pub fn cotan_laplacian_triplets(
     // Build the sparse matrix
     let mut triplets = Vec::new();
     for (i, &value) in diagonals.iter().enumerate() {
-        triplets.push(Triplet::new(i as u32, i as u32, value));
+        // The 1e-8 is added for stability (ensures the matrix is positive definite?)
+        triplets.push(Triplet::new(i as u32, i as u32, value + 1e-8));
     }
 
     for (edge, &value) in edges.iter().zip(values.iter()) {
@@ -206,7 +207,7 @@ pub fn dirichlet_boundary(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::test_utils::*;
     use approx::assert_relative_eq;
@@ -214,7 +215,7 @@ mod tests {
     use faer::Mat;
     use std::ops::Mul;
 
-    fn laplacian_mock() -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
+    pub fn laplacian_mock() -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
         let mesh = get_test_structure();
         let n_vert = mesh.vertices.len();
 
