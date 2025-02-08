@@ -148,12 +148,6 @@ fn roll_start_smallest(mut id_loop: Vec<u32>) -> Vec<u32> {
     id_loop
 }
 
-struct IdentifyResult {
-    pub edges: Vec<[u32; 2]>,
-    pub face_edges: Vec<[u32; 3]>,
-    // pub loops: Vec<Vec<u32>>,
-}
-
 fn identify_edges(faces: &[[u32; 3]]) -> Result<(Vec<[u32; 2]>, Vec<[u32; 3]>, Vec<Vec<u32>>)> {
     // The direct edges are the edges that are directly defined by the faces, kept in the same
     // order as they are defined in the faces.
@@ -210,7 +204,7 @@ mod tests {
 
     #[test]
     fn boundary_loops() {
-        let (vertices, faces) = get_mesh_data();
+        let (_vertices, faces) = get_mesh_data();
         let (_, _, loops) = identify_edges(&faces).unwrap();
 
         let expected_data = get_int_matrix("boundary_loops.intmat");
@@ -224,7 +218,7 @@ mod tests {
 
     #[test]
     fn remapped_faces() {
-        let (vertices, faces) = get_mesh_data();
+        let (_vertices, faces) = get_mesh_data();
         let (_, face_edges, _) = identify_edges(&faces).unwrap();
 
         let expected_data = get_int_matrix("face_edges.intmat");
@@ -238,7 +232,7 @@ mod tests {
 
     #[test]
     fn unique_edge_identification() {
-        let (vertices, faces) = get_mesh_data();
+        let (_vertices, faces) = get_mesh_data();
         let expected_data = get_int_matrix("edges.intmat");
         let edges = naive_edges(&faces);
         let unique = unique_edges(&edges);
@@ -255,7 +249,7 @@ mod tests {
 
     #[test]
     fn unique_edge_count() {
-        let (vertices, faces) = get_mesh_data();
+        let (_vertices, faces) = get_mesh_data();
         let expected = vec![
             2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
             2, 2, 2, 2, 2, 2, 2, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,

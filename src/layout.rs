@@ -1,14 +1,16 @@
 use crate::{single_row_matrix, Point2, Point3, Result, SparseMat};
 use faer::sparse::linalg::solvers::Lu;
-use faer::Mat;
 use faer::sparse::Triplet;
+use faer::Mat;
 
 fn cumulative_sum(a: &[f64], scale: f64) -> Vec<f64> {
     let mut sum = 0.0;
-    a.iter().map(|&x| {
-        sum += x * scale;
-        sum
-    }).collect()
+    a.iter()
+        .map(|&x| {
+            sum += x * scale;
+            sum
+        })
+        .collect()
 }
 
 ///
@@ -19,15 +21,14 @@ fn cumulative_sum(a: &[f64], scale: f64) -> Vec<f64> {
 /// * `b_lengths`:
 ///
 /// returns: Mat<f64, usize, usize>
-fn calc_im_elen(
-    ub: &Mat<f64>,
-    b_lengths: &[f64],
-) -> Mat<f64> {
+fn calc_im_elen(ub: &Mat<f64>, b_lengths: &[f64]) -> Mat<f64> {
     let ub_slice = ub.col_as_slice(0);
-    let values = b_lengths.iter().enumerate()
+    let values = b_lengths
+        .iter()
+        .enumerate()
         .map(|(i, &l)| {
             let a = (ub_slice[i] + ub_slice[(i + 1) % ub_slice.len()]) / 2.0;
-            b_lengths[i] * a.exp()
+            l * a.exp()
         })
         .collect::<Vec<_>>();
 
@@ -39,52 +40,55 @@ fn calc_best_fit_tangents(im_k: &[f64]) -> Mat<f64> {
     Mat::from_fn(phi.len(), 2, |i, j| match j {
         0 => phi[i].cos(),
         1 => phi[i].sin(),
-        _ => unreachable!()
+        _ => unreachable!(),
     })
 }
 
 fn calc_boundary_vertex_masses(b_lengths: &[f64]) -> Vec<f64> {
-    b_lengths.iter().enumerate()
-        .map(|(i, &l)| (l + b_lengths[(i + 1) % b_lengths.len()]) / 2.0)
-        .collect()
+    let mut result = vec![0.0; b_lengths.len()];
+    for (i, l) in b_lengths.iter().enumerate() {
+        let ni = (i + 1) % b_lengths.len();
+        result[ni] = (l + b_lengths[ni]) / 2.0;
+    }
+    result
 }
 
 fn calc_best_fit_n1(b_lengths: &[f64]) -> Result<SparseMat> {
-    let bvm = b_lengths.iter().enumerate()
-        .map(|(i, &l)| (l + b_lengths[(i + 1) % b_lengths.len()]) / 2.0)
-        .collect::<Vec<_>>();
-
-    SparseMat::try_new_from_triplets(bvm.len(), bvm.len(),
-                                     &bvm.iter().enumerate().map(|(i, &v)| Triplet::new(i as u32, i as u32, v)).collect::<Vec<_>>())
-        .map_err(Into::into)
+    let bvm = calc_boundary_vertex_masses(b_lengths);
+    SparseMat::try_new_from_triplets(
+        bvm.len(),
+        bvm.len(),
+        &bvm.iter()
+            .enumerate()
+            .map(|(i, &v)| Triplet::new(i as u32, i as u32, v))
+            .collect::<Vec<_>>(),
+    )
+    .map_err(Into::into)
 }
 
 pub fn best_fit_curve(
-    ub: &Mat<f64>,
-    im_k: &[f64],
-    i_bound: &[u32],
-    b_lengths: &[f64],
+    _ub: &Mat<f64>,
+    _im_k: &[f64],
+    _i_bound: &[u32],
+    _b_lengths: &[f64],
 ) -> Result<Vec<f64>> {
-    let phi = cumulative_sum(im_k, -1.0);
-    let tangents = calc_best_fit_tangents(b_lengths);
-    let im_elen = calc_im_elen(ub, b_lengths);
-    let n1 = calc_best_fit_n1(b_lengths)?;
-
-    let core = &tangents.transpose() * &n1 * &tangents;
-
-
-
+    // let phi = cumulative_sum(im_k, -1.0);
+    // let tangents = calc_best_fit_tangents(b_lengths);
+    // let im_elen = calc_im_elen(ub, b_lengths);
+    // let n1 = calc_best_fit_n1(b_lengths)?;
+    //
+    // let core = &tangents.transpose() * &n1 * &tangents;
 
     todo!("Implement best_fit_curve")
 }
 
 pub fn extend_curve(
-    a_lu: &Lu<u32, f64>,
-    aii_lu: &Lu<u32, f64>,
-    aib: &SparseMat,
-    vertices: &[Point3],
-    i_bound: &[u32],
-    i_inner: &[u32],
+    _a_lu: &Lu<u32, f64>,
+    _aii_lu: &Lu<u32, f64>,
+    _aib: &SparseMat,
+    _vertices: &[Point3],
+    _i_bound: &[u32],
+    _i_inner: &[u32],
 ) -> Result<Vec<Point2>> {
     todo!("Implement extend_curve")
 }
@@ -92,17 +96,29 @@ pub fn extend_curve(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::*;
-    use approx::assert_relative_eq;
     use crate::conformal::boundary_edge_lengths;
     use crate::invert_2x2;
+    use crate::test_utils::*;
+    use approx::assert_relative_eq;
 
     fn as_vec(mat: &Mat<f64>) -> Vec<Vec<f64>> {
-        mat.row_iter().map(|r| r.iter().copied().collect()).collect()
+        mat.row_iter()
+            .map(|r| r.iter().copied().collect())
+            .collect()
     }
 
     fn mock_im_k() -> Vec<f64> {
         get_float_vector("dirichlet_im_k.floatvec")
+    }
+
+    #[test]
+    fn boundary_edge_lengths_check() -> Result<()> {
+        let mesh = get_test_structure();
+        let b_lengths = boundary_edge_lengths(&mesh)?;
+        let expected = get_float_vector("boundary_edge_lengths.floatvec");
+
+        assert_vectors_eq!(b_lengths, expected);
+        Ok(())
     }
 
     #[test]
@@ -179,5 +195,4 @@ mod tests {
         assert_vectors_eq!(check, expected);
         Ok(())
     }
-
 }

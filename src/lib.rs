@@ -1,5 +1,5 @@
-use faer::Mat;
 use faer::sparse::SparseColMat;
+use faer::Mat;
 
 mod conformal;
 mod layout;
@@ -48,10 +48,10 @@ mod test_utils {
     use super::*;
     use crate::mesh_structure::MeshStructure;
     use crate::serialize::MeshData;
+    use approx::assert_relative_eq;
     use faer::sparse::SparseColMat;
     use faer::Mat;
     use std::io::Read;
-    use approx::assert_relative_eq;
     use zip::ZipArchive;
 
     const DATA_BYTES: &[u8] = include_bytes!("test_data.zip");
@@ -71,9 +71,9 @@ mod test_utils {
     macro_rules! assert_matrices_eq {
         ($a:ident, $b:ident, $rel:expr) => {
             assert_eq!($a.len(), $b.len());
-            for (i, (ar, br)) in $a.iter().zip($b.iter()).enumerate() {
+            for (ar, br) in $a.iter().zip($b.iter()) {
                 assert_eq!(ar.len(), br.len());
-                for (j, (ac, bc)) in ar.iter().zip(br.iter()).enumerate() {
+                for (ac, bc) in ar.iter().zip(br.iter()) {
                     assert_relative_eq!(ac, bc, epsilon = $rel);
                 }
             }
@@ -84,7 +84,7 @@ mod test_utils {
     macro_rules! assert_vectors_eq {
         ($a:ident, $b:ident) => {
             assert_eq!($a.len(), $b.len());
-            for (i, (a, b)) in $a.iter().zip($b.iter()).enumerate() {
+            for (a, b) in $a.iter().zip($b.iter()) {
                 assert_relative_eq!(a, b, epsilon = 1e-6);
             }
         };
@@ -190,12 +190,15 @@ mod test_utils {
 
         let boundary_edge_len = boundary_edge_lengths(&mesh)?;
 
-        let uvb = best_fit_curve(&ub, &im_k, &i_bound, &boundary_edge_len)?;
+        let _uvb = best_fit_curve(&ub, &im_k, &i_bound, &boundary_edge_len)?;
 
         let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
 
         let expected_data = get_float_matrix("layout_uv.floatmat");
-        let expected = expected_data.iter().map(|r| Point2::new(r[0], r[1])).collect::<Vec<_>>();
+        let expected = expected_data
+            .iter()
+            .map(|r| Point2::new(r[0], r[1]))
+            .collect::<Vec<_>>();
 
         assert_eq!(uv.len(), expected.len());
         for (a, b) in uv.iter().zip(expected.iter()) {

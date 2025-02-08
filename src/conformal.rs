@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn dirichlet_h() -> Result<()> {
         let mesh = get_test_structure();
-        let (a, aii, aib, abb) = laplacian_mock()?;
+        let (_, aii, aib, abb) = laplacian_mock()?;
 
         let all_defects = mock_defects(&mesh)?;
         let inner_defects = mesh
@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn dirichlet_ui() -> Result<()> {
         let mesh = get_test_structure();
-        let (a, aii, aib, abb) = laplacian_mock()?;
+        let (_, aii, aib, _) = laplacian_mock()?;
 
         let all_defects = mock_defects(&mesh)?;
         let inner_defects = mesh
