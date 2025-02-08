@@ -1,4 +1,3 @@
-use crate::Point3;
 use crate::Result;
 use rmp_serde::from_read;
 use serde::Deserialize;
@@ -6,7 +5,7 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct MeshData {
-    pub vertices: Vec<Point3>,
+    pub vertices: Vec<[f64; 3]>,
     pub faces: Vec<[u32; 3]>,
 }
 

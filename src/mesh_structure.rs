@@ -1,11 +1,10 @@
-use crate::Point3;
-use crate::Result;
+use crate::{dist, Result};
 use std::collections::{HashMap, HashSet};
 
 pub struct MeshStructure {
     /// A list of vertices in the mesh. The order of the vertices is unimportant on its own, but
     /// the elements of `faces` and `edges` refer to the indices in this list.
-    pub vertices: Vec<Point3>,
+    pub vertices: Vec<[f64; 3]>,
 
     /// A list of faces in the mesh. Each face consists of three indices into the `vertices` list,
     /// which are the three vertices of the face in counter-clockwise order.
@@ -30,12 +29,12 @@ pub struct MeshStructure {
 }
 
 impl MeshStructure {
-    pub fn new(vertices: Vec<Point3>, faces: Vec<[u32; 3]>) -> Result<Self> {
+    pub fn new(vertices: Vec<[f64; 3]>, faces: Vec<[u32; 3]>) -> Result<Self> {
         let (edges, face_edges, boundaries) = identify_edges(&faces)?;
 
         let edge_lengths = edges
             .iter()
-            .map(|[i, j]| (vertices[*i as usize] - vertices[*j as usize]).norm())
+            .map(|[i, j]| dist(&vertices[*i as usize] , &vertices[*j as usize]))
             .collect();
 
         Ok(Self {

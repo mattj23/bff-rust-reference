@@ -7,21 +7,17 @@ pub mod mesh_structure;
 pub mod serialize;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
-
-pub type Vector3 = nalgebra::SVector<f64, 3>;
-pub type Point3 = nalgebra::Point3<f64>;
-pub type Point2 = nalgebra::Point2<f64>;
 pub type SparseMat = SparseColMat<u32, f64>;
-
-// Quick helper for making a single row matrix from slice
-pub fn single_row_matrix(data: &[f64]) -> Mat<f64> {
-    Mat::from_fn(1, data.len(), |_, j| data[j])
-}
 
 // Quick helper for making a single column matrix from slice
 pub fn single_col_matrix(data: &[f64]) -> Mat<f64> {
     Mat::from_fn(data.len(), 1, |i, _| data[i])
 }
+
+fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
 
 pub fn invert_2x2(m: &Mat<f64>) -> Result<Mat<f64>> {
     if m.nrows() != 2 || m.ncols() != 2 {
@@ -125,7 +121,7 @@ mod test_utils {
         contents
     }
 
-    pub fn get_mesh_data() -> (Vec<Point3>, Vec<[u32; 3]>) {
+    pub fn get_mesh_data() -> (Vec<[f64; 3]>, Vec<[u32; 3]>) {
         let bytes = get_file_bytes("hyperboloid.msgpack");
         let mesh_data: MeshData = rmp_serde::from_read(std::io::Cursor::new(bytes)).unwrap();
 
@@ -190,20 +186,12 @@ mod test_utils {
 
         let boundary_edge_len = boundary_edge_lengths(&mesh)?;
 
-        let _uvb = best_fit_curve(&ub, &im_k, &boundary_edge_len)?;
+        let uvb = best_fit_curve(&ub, &im_k, &boundary_edge_len)?;
 
-        // let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
-        //
-        // let expected_data = get_float_matrix("layout_uv.floatmat");
-        // let expected = expected_data
-        //     .iter()
-        //     .map(|r| Point2::new(r[0], r[1]))
-        //     .collect::<Vec<_>>();
-        //
-        // assert_eq!(uv.len(), expected.len());
-        // for (a, b) in uv.iter().zip(expected.iter()) {
-        //     assert_relative_eq!(a, b, max_relative = 1e-8);
-        // }
+        let uv = extend_curve(&a_lu, &aii_lu, &aib, &uvb, mesh.vertices.len(), &i_bound, &i_inner)?;
+
+        let expected_data = get_float_matrix("layout_uv.floatmat");
+        assert_matrices_eq!(uv, expected_data, 1e-8);
 
         Ok(())
     }

@@ -1,4 +1,4 @@
-use crate::{invert_2x2, single_col_matrix, Point2, Point3, Result, SparseMat};
+use crate::{invert_2x2, single_col_matrix, Result, SparseMat};
 use faer::linalg::solvers::Solve;
 use faer::sparse::linalg::solvers::Lu;
 use faer::sparse::Triplet;

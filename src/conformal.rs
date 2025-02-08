@@ -1,5 +1,5 @@
 use crate::mesh_structure::MeshStructure;
-use crate::{Result, SparseMat};
+use crate::{dist, Result, SparseMat};
 use faer::linalg::solvers::Solve;
 use faer::sparse::linalg::solvers::Lu;
 use faer::sparse::{SparseColMat, Triplet};
@@ -14,7 +14,7 @@ pub fn boundary_edge_lengths(mesh: &MeshStructure) -> Result<Vec<f64>> {
         .enumerate()
         .map(|(i, &v)| {
             let next = mesh.boundaries[0][(i + 1) % mesh.boundaries[0].len()];
-            (mesh.vertices[v as usize] - mesh.vertices[next as usize]).norm()
+            dist(&mesh.vertices[v as usize], &mesh.vertices[next as usize])
         })
         .collect())
 }
