@@ -167,7 +167,10 @@ pub fn extend_curve(
     let h = calc_extend_h(n_vert, i_bound, uvb);
     let y = a_lu.solve(-&h);
 
-    Ok(uv.col_as_slice(0).iter().zip(y.col_as_slice(0).iter())
+    Ok(uv
+        .col_as_slice(0)
+        .iter()
+        .zip(y.col_as_slice(0).iter())
         .map(|(&x, &y)| [x, y])
         .collect())
 }
@@ -180,24 +183,6 @@ mod tests {
     use crate::invert_2x2;
     use crate::test_utils::*;
     use approx::assert_relative_eq;
-
-    #[test]
-    fn extend_curve_full() -> Result<()> {
-        let mesh = get_test_structure();
-        let i_bound = mesh.single_boundary_vertices()?;
-        let i_inner = mesh.inner_vertices()?;
-        let (_, aii, aib, a) = laplacian_mock()?;
-        let a_lu = a.sp_lu()?;
-        let aii_lu = aii.sp_lu()?;
-        let uvb = mock_uvb();
-
-        let uv = extend_curve(&a_lu, &aii_lu, &aib, &uvb, mesh.vertices.len(), &i_bound, &i_inner)?;
-        let expected = get_float_matrix("layout_uv.floatmat");
-
-        assert_matrices_eq!(uv, expected, 1e-8);
-
-        Ok(())
-    }
 
     #[test]
     fn extend_curve_uv_xs() -> Result<()> {

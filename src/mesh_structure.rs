@@ -34,7 +34,7 @@ impl MeshStructure {
 
         let edge_lengths = edges
             .iter()
-            .map(|[i, j]| dist(&vertices[*i as usize] , &vertices[*j as usize]))
+            .map(|[i, j]| dist(&vertices[*i as usize], &vertices[*j as usize]))
             .collect();
 
         Ok(Self {
@@ -96,10 +96,7 @@ fn unique_edges(all_edges: &[[u32; 2]]) -> Vec<([u32; 2], usize)> {
         *count += 1;
     }
 
-    let mut unique_count: Vec<_> = unique
-        .into_iter()
-        .map(|(key, count)| (key, count))
-        .collect();
+    let mut unique_count: Vec<_> = unique.into_iter().collect();
     unique_count.sort();
     unique_count
 }

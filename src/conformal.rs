@@ -167,10 +167,10 @@ pub fn laplacian_set(
     i_bound: &[u32],
     triplets: &[Triplet<u32, u32, f64>],
 ) -> Result<(SparseMat, SparseMat, SparseMat, SparseMat)> {
-    let a = SparseColMat::try_new_from_triplets(n, n, &triplets)?;
-    let aii = slice_triplets_to_sparse(&i_inner, &i_inner, &triplets)?;
-    let aib = slice_triplets_to_sparse(&i_inner, &i_bound, &triplets)?;
-    let abb = slice_triplets_to_sparse(&i_bound, &i_bound, &triplets)?;
+    let a = SparseColMat::try_new_from_triplets(n, n, triplets)?;
+    let aii = slice_triplets_to_sparse(i_inner, i_inner, triplets)?;
+    let aib = slice_triplets_to_sparse(i_inner, i_bound, triplets)?;
+    let abb = slice_triplets_to_sparse(i_bound, i_bound, triplets)?;
 
     Ok((a, aii, aib, abb))
 }

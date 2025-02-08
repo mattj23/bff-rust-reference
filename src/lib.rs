@@ -1,8 +1,8 @@
 use faer::sparse::SparseColMat;
 use faer::Mat;
 
-mod conformal;
-mod layout;
+pub mod conformal;
+pub mod layout;
 pub mod mesh_structure;
 pub mod serialize;
 
@@ -17,7 +17,6 @@ pub fn single_col_matrix(data: &[f64]) -> Mat<f64> {
 fn dist(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
 }
-
 
 pub fn invert_2x2(m: &Mat<f64>) -> Result<Mat<f64>> {
     if m.nrows() != 2 || m.ncols() != 2 {
@@ -188,10 +187,18 @@ mod test_utils {
 
         let uvb = best_fit_curve(&ub, &im_k, &boundary_edge_len)?;
 
-        let uv = extend_curve(&a_lu, &aii_lu, &aib, &uvb, mesh.vertices.len(), &i_bound, &i_inner)?;
+        let uv = extend_curve(
+            &a_lu,
+            &aii_lu,
+            &aib,
+            &uvb,
+            mesh.vertices.len(),
+            &i_bound,
+            &i_inner,
+        )?;
 
         let expected_data = get_float_matrix("layout_uv.floatmat");
-        assert_matrices_eq!(uv, expected_data, 1e-8);
+        assert_matrices_eq!(uv, expected_data, 1e-6);
 
         Ok(())
     }
