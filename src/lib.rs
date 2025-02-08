@@ -190,7 +190,7 @@ mod test_utils {
 
         let boundary_edge_len = boundary_edge_lengths(&mesh)?;
 
-        let _uvb = best_fit_curve(&ub, &im_k, &i_bound, &boundary_edge_len)?;
+        let _uvb = best_fit_curve(&ub, &im_k, &boundary_edge_len)?;
 
         let uv = extend_curve(&a_lu, &aii_lu, &aib, &mesh.vertices, &i_bound, &i_inner)?;
 
